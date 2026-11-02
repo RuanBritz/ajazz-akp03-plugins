@@ -1,0 +1,4 @@
+# Build output (run build.bat to regenerate)
+**/bin/
+**/obj/
+*.log
