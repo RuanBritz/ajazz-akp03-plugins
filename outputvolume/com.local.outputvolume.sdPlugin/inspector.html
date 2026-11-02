@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Output Volume</title>
+  <style>
+    body { margin: 0; padding: 8px 12px; background: #2d2d2d; color: #d8d8d8;
+           font: 12px "Segoe UI", sans-serif; }
+    .row { display: flex; align-items: center; margin: 6px 0; }
+    .row label { width: 80px; flex-shrink: 0; color: #9a9a9a; }
+    select, button { flex: 1; min-width: 0; height: 26px; background: #3d3d3d; color: #d8d8d8;
+                     border: 1px solid #4a4a4a; border-radius: 3px; font: inherit; padding: 0 6px; }
+    button { cursor: pointer; }
+    button:hover { background: #474747; }
+    .hint { margin: 10px 0 0 80px; color: #8a8a8a; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <label for="device">Device</label>
+    <select id="device"><option value="">Default output device</option></select>
+  </div>
+  <div class="row">
+    <label for="step">Step</label>
+    <select id="step">
+      <option value="1">1% per click</option>
+      <option value="2">2% per click</option>
+      <option value="5">5% per click</option>
+      <option value="10">10% per click</option>
+    </select>
+  </div>
+  <div class="row">
+    <label></label>
+    <button id="refresh">Refresh device list</button>
+  </div>
+  <div class="hint">Turn the knob to change volume. Press it to mute or unmute.</div>
+
+  <script>
+    let ws, piUuid, context, settings = {}, devices = [], defaultName = '';
+    const deviceSelect = document.getElementById('device');
+    const stepSelect = document.getElementById('step');
+
+    // Called by Stream Dock when the property inspector opens.
+    function connectElgatoStreamDeckSocket(port, uuid, registerEvent, appInfo, actionInfo) {
+      piUuid = uuid;
+      const info = JSON.parse(actionInfo);
+      context = info.context;
+      settings = (info.payload && info.payload.settings) || {};
+      render();
+
+      ws = new WebSocket('ws://127.0.0.1:' + port);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ event: registerEvent, uuid }));
+        sendToPlugin({ refreshDevices: true });
+      };
+      ws.onmessage = e => {
+        const msg = JSON.parse(e.data);
+        if (msg.event === 'didReceiveSettings') {
+          settings = msg.payload.settings || {};
+          render();
+        } else if (msg.event === 'sendToPropertyInspector' && msg.payload.devices) {
+          devices = msg.payload.devices;
+          defaultName = msg.payload.defaultName || '';
+          render();
+        }
+      };
+    }
+
+    function render() {
+      const selected = settings.deviceId || '';
+      const options = [{ id: '', name: 'Default output device' + (defaultName ? ' (' + defaultName + ')' : '') }]
+        .concat(devices);
+      if (selected && !devices.some(d => d.id === selected))
+        options.push({ id: selected, name: 'Saved device (not connected)' });
+
+      deviceSelect.innerHTML = '';
+      for (const d of options) {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = d.name;
+        deviceSelect.appendChild(opt);
+      }
+      deviceSelect.value = selected;
+      stepSelect.value = String(settings.step || 2);
+    }
+
+    function save() {
+      settings.deviceId = deviceSelect.value;
+      settings.step = parseInt(stepSelect.value, 10);
+      ws.send(JSON.stringify({ event: 'setSettings', context, payload: settings }));
+      sendToPlugin({ settings });
+    }
+
+    function sendToPlugin(payload) {
+      ws.send(JSON.stringify({ event: 'sendToPlugin', action: 'com.local.outputvolume.knob', context: piUuid, payload }));
+    }
+
+    deviceSelect.addEventListener('change', save);
+    stepSelect.addEventListener('change', save);
+    document.getElementById('refresh').addEventListener('click', () => sendToPlugin({ refreshDevices: true }));
+  </script>
+</body>
+</html>

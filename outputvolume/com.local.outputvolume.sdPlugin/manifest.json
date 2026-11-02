@@ -1,0 +1,35 @@
+{
+  "SDKVersion": 2,
+  "Name": "Output Volume",
+  "Version": "1.0.0",
+  "Author": "Your Name",
+  "Description": "Turn a knob to change the volume of a chosen Windows output device. Press the knob to mute.",
+  "Icon": "images/pluginIcon",
+  "Category": "Output Volume",
+  "CategoryIcon": "images/categoryIcon",
+  "CodePath": "bin/OutputVolume.exe",
+  "CodePathWin": "bin/OutputVolume.exe",
+  "UUID": "com.local.outputvolume",
+  "OS": [
+    { "Platform": "windows", "MinimumVersion": "10" }
+  ],
+  "Software": {
+    "MinimumVersion": "2.9"
+  },
+  "Actions": [
+    {
+      "UUID": "com.local.outputvolume.knob",
+      "Name": "Device Volume",
+      "Tooltip": "Turn to change the volume of the selected output device, press to mute",
+      "Icon": "images/actionIcon",
+      "PropertyInspectorPath": "inspector.html",
+      "SupportedInMultiActions": false,
+      "DisableAutomaticStates": true,
+      "Controllers": ["Knob"],
+      "States": [
+        { "Image": "images/speakerOn",  "ShowTitle": true },
+        { "Image": "images/speakerOff", "ShowTitle": true }
+      ]
+    }
+  ]
+}
