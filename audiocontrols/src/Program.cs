@@ -1,5 +1,5 @@
 // Audio Controls plugin for AJAZZ / MiraBox Stream Dock (Elgato-style SDK v2).
-// One process serves every action: mic mute, per-device output volume, output device switching and camera blocking.
+// One process serves every action: mic mute, per-device output volume and output device switching.
 // Written in C# 5 so it compiles with the csc.exe that ships with Windows (.NET Framework 4.x).
 
 using System;
@@ -29,8 +29,7 @@ namespace AudioControls
         {
             new MicMuteAction(),
             new VolumeAction(),
-            new OutputSwitchAction(),
-            new CameraAction()
+            new OutputSwitchAction()
         };
 
         static Timer pollTimer;

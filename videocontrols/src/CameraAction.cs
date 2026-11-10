@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace AudioControls
+namespace VideoControls
 {
     /// <summary>Key that blocks / allows the camera for all apps via the Windows camera privacy setting.</summary>
     internal class CameraAction : PluginAction
@@ -15,7 +15,7 @@ namespace AudioControls
         readonly object contextsLock = new object();
         int lastState = -1;
 
-        public override string Uuid { get { return "com.local.audiocontrols.camera"; } }
+        public override string Uuid { get { return "com.local.videocontrols.camera"; } }
 
         public override async Task Handle(string ev, string context, Dictionary<string, object> payload)
         {

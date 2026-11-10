@@ -1,7 +1,7 @@
 using System;
 using Microsoft.Win32;
 
-namespace AudioControls
+namespace VideoControls
 {
     /// <summary>
     /// Windows camera privacy switch (Settings > Privacy &amp; security > Camera). It lives in the registry under

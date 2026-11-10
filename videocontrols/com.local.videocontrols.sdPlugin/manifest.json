@@ -1,0 +1,34 @@
+{
+  "SDKVersion": 2,
+  "Name": "Video Controls",
+  "Version": "1.0.0",
+  "Author": "Your Name",
+  "Description": "Camera controls for your AJAZZ AKP03: turn your camera off and on from a key.",
+  "Icon": "images/pluginIcon",
+  "Category": "Video Controls",
+  "CategoryIcon": "images/categoryIcon",
+  "CodePath": "bin/VideoControls.exe",
+  "CodePathWin": "bin/VideoControls.exe",
+  "UUID": "com.local.videocontrols",
+  "OS": [
+    { "Platform": "windows", "MinimumVersion": "10" }
+  ],
+  "Software": {
+    "MinimumVersion": "2.9"
+  },
+  "Actions": [
+    {
+      "UUID": "com.local.videocontrols.camera",
+      "Name": "Toggle Camera",
+      "Tooltip": "Block / allow the camera for all apps (Windows camera privacy setting)",
+      "Icon": "images/cameraAction",
+      "SupportedInMultiActions": false,
+      "DisableAutomaticStates": true,
+      "Controllers": ["Keypad"],
+      "States": [
+        { "Image": "images/cameraOn",  "ShowTitle": false },
+        { "Image": "images/cameraOff", "ShowTitle": false }
+      ]
+    }
+  ]
+}
