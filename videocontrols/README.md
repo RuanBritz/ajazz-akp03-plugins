@@ -4,13 +4,24 @@ Camera control on the AKP03. Separate from Audio Controls, with its own build an
 
 | Action | Put it on | What it does |
 |---|---|---|
-| **Toggle Camera** | a key | Blocks / allows the camera for all apps. Green = allowed, red = blocked. |
+| **Toggle Camera** | a key | Blanks / restores your video in NVIDIA Broadcast. Green = live, red = blank. |
 
-> **Being reworked.** The current key uses the Windows camera privacy setting, which doesn't reach video
-> that goes through NVIDIA Broadcast (e.g. Google Meet with "Camera (NVIDIA Broadcast)"). The plan to switch
-> Broadcast to a blank virtual camera instead is in [`docs/blank-camera-plan.md`](docs/blank-camera-plan.md).
+## One-time setup: Blank Camera
+The key works by switching NVIDIA Broadcast's camera to a virtual camera called **Blank Camera**, which only
+ever shows black. That camera is a small native DLL that has to be built and installed once.
 
-## Install
+1. **C++ tools (once):** in the Visual Studio Installer, add **Desktop development with C++** with a
+   Windows 11 SDK.
+2. **Build:** run `build-blankcam.bat`. It builds `blankcam\bin\BlankCamera.dll` and `BlankCamSetup.exe`.
+3. **Install:** run `setup-blankcam.bat` and accept the one admin prompt. It copies both files to
+   `%ProgramFiles%\VideoControls\BlankCamera\` (Windows' Frame Server can't read your user profile),
+   registers the DLL and creates the camera. The camera survives reboots.
+4. **Broadcast:** restart NVIDIA Broadcast if **Blank Camera** isn't in its camera list yet.
+
+To remove it, run `setup-blankcam.bat uninstall`. Blank Camera also shows up in other apps' camera lists
+(for example Meet's own picker); that's harmless.
+
+## Install the plugin
 1. Close the AJAZZ Stream Dock app (check the system tray too).
 2. Run `install.bat`. It compiles the plugin with Windows' built-in C# compiler and copies it to
    `%APPDATA%\HotSpot\StreamDock\Plugins\com.local.videocontrols.sdPlugin`.
@@ -25,25 +36,29 @@ If you placed a Toggle Camera key from Audio Controls earlier, remove it and use
 Reinstalling Audio Controls doesn't delete the old camera files from its installed folder, but they're unused.
 
 ## Toggle Camera
-- Flips the Windows camera privacy setting (Settings > Privacy & security > Camera): both
-  **Let apps access your camera** and **Let desktop apps access your camera**, so Teams / Zoom / Discord /
-  browsers are all blocked. No admin rights needed.
-- Unblocking turns both of those switches on. Per-app camera permissions are left alone.
-- An app that already has the camera open may keep its picture until it reopens the camera (e.g. turn
-  video off and on in the call, or rejoin). New attempts to use the camera are blocked straight away.
-- Doesn't affect apps using a virtual camera such as NVIDIA Broadcast's (see the note above).
-- Stays in sync if you change the setting in Windows Settings.
-- Warning triangle on the key: **Camera access** for the whole device is turned off in Windows. The key
-  shows red, and only an admin can turn that back on in Settings.
+- **Press while live:** the key asks NVIDIA Broadcast which camera is active, remembers it and its
+  resolution, and switches Broadcast to Blank Camera. The key turns red straight away.
+- **Press while blank:** Broadcast goes back to the remembered camera at the same resolution. Green.
+- Meet / Teams / Zoom keep using **Camera (NVIDIA Broadcast)** the whole time, so the call never loses its
+  camera and nobody sees "camera off": they just see black.
+- The key colour comes from Broadcast itself (checked every 3 s), so switching the camera in Broadcast's own
+  window shows up on the key too.
+- The remembered camera is saved in the key's settings, so it survives restarting Stream Dock or Broadcast.
+- Talks to Broadcast's local control server (`http://127.0.0.1:<port>/gateway`, port from
+  `%APPDATA%\nvidia-broadcast\gateway.json`). No admin rights per press. The plugin checks that the server
+  really is NVIDIA Broadcast before sending anything.
+- With background replace on, a blank feed may show your background image rather than pure black.
 
 ## How it works
 - Stream Dock starts `bin\VideoControls.exe`, which connects to Stream Dock over a local WebSocket and routes
-  each event to its action by action UUID. Every second it re-checks the camera setting.
+  each event to its action by action UUID.
 - Source, in `src/`:
   - `Program.cs` – WebSocket loop, event routing, shared send / log helpers.
   - `CameraAction.cs` – the Toggle Camera key.
-  - `Camera.cs` – reads and writes the camera privacy setting in the registry
-    (`HKCU\...\CapabilityAccessManager\ConsentStore\webcam`).
+  - `Broadcast.cs` – minimal MCP client for NVIDIA Broadcast's gateway (`list_devices`, `set_active_device`).
+- `blankcam/` – the Blank Camera, C++: a Media Foundation media source that outputs black NV12 / RGB32 frames
+  at 1080p30 and 720p30 (`MediaSource.cpp`, `Dll.cpp`), and `BlankCamSetup.cpp`, which registers it with
+  `MFCreateVirtualCamera`. Design notes: [`docs/blank-camera-plan.md`](docs/blank-camera-plan.md).
 
 ## Adding an action
 1. Add it to `Actions` in `manifest.json` with a UUID starting `com.local.videocontrols.`.
@@ -52,3 +67,9 @@ Reinstalling Audio Controls doesn't delete the old camera files from its install
 ## Troubleshooting
 - Check `bin\videocontrols.log` inside the installed plugin folder.
 - Plugin not listed: make sure the folder name ends in `.sdPlugin` and restart Stream Dock fully.
+- **Warning triangle, log says "Broadcast gateway not found" or "Broadcast unavailable":** NVIDIA Broadcast
+  isn't running (or is older than 2.3, which has no gateway). Start it; the key colour is left alone until then.
+- **Warning triangle, log says "Blank Camera is not in Broadcast's camera list":** run `setup-blankcam.bat`,
+  then restart NVIDIA Broadcast. Check that **Blank Camera** appears in the Windows Camera app.
+- **Video comes back at a different resolution:** the log notes it; pick the resolution in Broadcast once and
+  the key remembers it.

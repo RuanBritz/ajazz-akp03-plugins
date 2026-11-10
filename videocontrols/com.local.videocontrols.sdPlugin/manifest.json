@@ -1,9 +1,9 @@
 {
   "SDKVersion": 2,
   "Name": "Video Controls",
-  "Version": "1.0.0",
+  "Version": "1.1.0",
   "Author": "Your Name",
-  "Description": "Camera controls for your AJAZZ AKP03: turn your camera off and on from a key.",
+  "Description": "Camera controls for your AJAZZ AKP03: blank your NVIDIA Broadcast camera from a key.",
   "Icon": "images/pluginIcon",
   "Category": "Video Controls",
   "CategoryIcon": "images/categoryIcon",
@@ -20,7 +20,7 @@
     {
       "UUID": "com.local.videocontrols.camera",
       "Name": "Toggle Camera",
-      "Tooltip": "Block / allow the camera for all apps (Windows camera privacy setting)",
+      "Tooltip": "Blank / restore your video by switching NVIDIA Broadcast to the Blank Camera",
       "Icon": "images/cameraAction",
       "SupportedInMultiActions": false,
       "DisableAutomaticStates": true,

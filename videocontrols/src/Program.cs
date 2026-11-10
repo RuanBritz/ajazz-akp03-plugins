@@ -1,5 +1,5 @@
 // Video Controls plugin for AJAZZ / MiraBox Stream Dock (Elgato-style SDK v2).
-// One process serves every action; currently the camera toggle.
+// One process serves every action; currently the camera toggle (via NVIDIA Broadcast's local gateway).
 // Written in C# 5 so it compiles with the csc.exe that ships with Windows (.NET Framework 4.x).
 
 using System;
@@ -185,6 +185,17 @@ namespace VideoControls
                 { "event", "setImage" },
                 { "context", context },
                 { "payload", new Dictionary<string, object> { { "image", image }, { "target", 0 } } }
+            });
+        }
+
+        /// <summary>Saves the key's settings in Stream Dock; they come back in willAppear's payload.</summary>
+        public static Task SetSettings(string context, Dictionary<string, object> settings)
+        {
+            return Send(new Dictionary<string, object>
+            {
+                { "event", "setSettings" },
+                { "context", context },
+                { "payload", settings }
             });
         }
 
