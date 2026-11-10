@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Output Volume</title>
+  <title>Device Volume</title>
   <style>
     body { margin: 0; padding: 8px 12px; background: #2d2d2d; color: #d8d8d8;
            font: 12px "Segoe UI", sans-serif; }
@@ -36,7 +36,7 @@
   <div class="hint">Turn the knob to change volume. Press it to mute or unmute.</div>
 
   <script>
-    let ws, piUuid, context, settings = {}, devices = [], defaultName = '';
+    let ws, piUuid, action, context, settings = {}, devices = [], defaultName = '';
     const deviceSelect = document.getElementById('device');
     const stepSelect = document.getElementById('step');
 
@@ -44,6 +44,7 @@
     function connectElgatoStreamDeckSocket(port, uuid, registerEvent, appInfo, actionInfo) {
       piUuid = uuid;
       const info = JSON.parse(actionInfo);
+      action = info.action;
       context = info.context;
       settings = (info.payload && info.payload.settings) || {};
       render();
@@ -92,7 +93,7 @@
     }
 
     function sendToPlugin(payload) {
-      ws.send(JSON.stringify({ event: 'sendToPlugin', action: 'com.local.outputvolume.knob', context: piUuid, payload }));
+      ws.send(JSON.stringify({ event: 'sendToPlugin', action, context: piUuid, payload }));
     }
 
     deviceSelect.addEventListener('change', save);

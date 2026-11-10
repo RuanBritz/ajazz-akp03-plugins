@@ -9,12 +9,12 @@ if not exist "%CSC%" (
   exit /b 1
 )
 
-set "OUT=%~dp0com.local.micmute.sdPlugin\bin"
+set "OUT=%~dp0com.local.audiocontrols.sdPlugin\bin"
 if not exist "%OUT%" mkdir "%OUT%"
 
-"%CSC%" /nologo /target:winexe /optimize+ /out:"%OUT%\MicMute.exe" /r:System.Web.Extensions.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll "%~dp0src\Program.cs"
+"%CSC%" /nologo /target:winexe /optimize+ /out:"%OUT%\AudioControls.exe" /r:System.Web.Extensions.dll /r:System.Drawing.dll "%~dp0src\*.cs"
 if errorlevel 1 (
   echo Build failed.
   exit /b 1
 )
-echo Built: %OUT%\MicMute.exe
+echo Built: %OUT%\AudioControls.exe

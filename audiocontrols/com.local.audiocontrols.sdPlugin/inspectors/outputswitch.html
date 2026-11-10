@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Switch Output Device</title>
+  <style>
+    body { margin: 0; padding: 8px 12px; background: #2d2d2d; color: #d8d8d8;
+           font: 12px "Segoe UI", sans-serif; }
+    .row { display: flex; align-items: flex-start; margin: 6px 0; }
+    .row > label { width: 80px; flex-shrink: 0; color: #9a9a9a; padding-top: 3px; }
+    .list { flex: 1; min-width: 0; }
+    .check { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; }
+    .check input { margin: 0; }
+    .check span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .missing { color: #8a8a8a; font-style: italic; }
+    button { flex: 1; min-width: 0; height: 26px; background: #3d3d3d; color: #d8d8d8; cursor: pointer;
+             border: 1px solid #4a4a4a; border-radius: 3px; font: inherit; padding: 0 6px; }
+    button:hover { background: #474747; }
+    .hint { margin: 10px 0 0 80px; color: #8a8a8a; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <label>Devices</label>
+    <div class="list" id="devices"></div>
+  </div>
+  <div class="row">
+    <label>Options</label>
+    <div class="list">
+      <label class="check"><input type="checkbox" id="comms" /><span>Also switch communications device</span></label>
+    </div>
+  </div>
+  <div class="row">
+    <label></label>
+    <button id="refresh">Refresh device list</button>
+  </div>
+  <div class="hint">
+    Press the key to switch to the next ticked device. Tick one device for a "switch to this device" key,
+    or none to cycle through all outputs. The key shows the current default output.
+  </div>
+
+  <script>
+    let ws, piUuid, action, context, settings = {}, devices = [];
+    const list = document.getElementById('devices');
+    const comms = document.getElementById('comms');
+
+    // Called by Stream Dock when the property inspector opens.
+    function connectElgatoStreamDeckSocket(port, uuid, registerEvent, appInfo, actionInfo) {
+      piUuid = uuid;
+      const info = JSON.parse(actionInfo);
+      action = info.action;
+      context = info.context;
+      settings = (info.payload && info.payload.settings) || {};
+      render();
+
+      ws = new WebSocket('ws://127.0.0.1:' + port);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ event: registerEvent, uuid }));
+        sendToPlugin({ refreshDevices: true });
+      };
+      ws.onmessage = e => {
+        const msg = JSON.parse(e.data);
+        if (msg.event === 'didReceiveSettings') {
+          settings = msg.payload.settings || {};
+          render();
+        } else if (msg.event === 'sendToPropertyInspector' && msg.payload.devices) {
+          devices = msg.payload.devices;
+          render();
+        }
+      };
+    }
+
+    function render() {
+      const selected = settings.devices || [];
+      // Keep saved devices that are unplugged right now, so they aren't dropped on the next save.
+      const options = devices.slice();
+      for (const id of selected)
+        if (!devices.some(d => d.id === id)) options.push({ id, name: 'Saved device (not connected)', missing: true });
+
+      list.innerHTML = '';
+      if (options.length === 0) list.textContent = 'Loading devices…';
+      for (const d of options) {
+        const row = document.createElement('label');
+        row.className = 'check';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.value = d.id;
+        box.checked = selected.includes(d.id);
+        box.addEventListener('change', save);
+        const name = document.createElement('span');
+        name.textContent = d.name;
+        name.title = d.name;
+        if (d.missing) name.className = 'missing';
+        row.append(box, name);
+        list.appendChild(row);
+      }
+      comms.checked = settings.comms !== false;
+    }
+
+    function save() {
+      settings.devices = Array.from(list.querySelectorAll('input:checked'), box => box.value);
+      settings.comms = comms.checked;
+      ws.send(JSON.stringify({ event: 'setSettings', context, payload: settings }));
+      sendToPlugin({ settings });
+    }
+
+    function sendToPlugin(payload) {
+      ws.send(JSON.stringify({ event: 'sendToPlugin', action, context: piUuid, payload }));
+    }
+
+    comms.addEventListener('change', save);
+    document.getElementById('refresh').addEventListener('click', () => sendToPlugin({ refreshDevices: true }));
+  </script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+{
+  "SDKVersion": 2,
+  "Name": "Audio Controls",
+  "Version": "1.0.0",
+  "Author": "Your Name",
+  "Description": "Windows audio and camera on your AJAZZ AKP03: mute the mic, set output volume per device, switch the default output device, and block the camera.",
+  "Icon": "images/pluginIcon",
+  "Category": "Audio Controls",
+  "CategoryIcon": "images/categoryIcon",
+  "CodePath": "bin/AudioControls.exe",
+  "CodePathWin": "bin/AudioControls.exe",
+  "UUID": "com.local.audiocontrols",
+  "OS": [
+    { "Platform": "windows", "MinimumVersion": "10" }
+  ],
+  "Software": {
+    "MinimumVersion": "2.9"
+  },
+  "Actions": [
+    {
+      "UUID": "com.local.audiocontrols.micmute",
+      "Name": "Toggle Mic Mute",
+      "Tooltip": "Mute / unmute your default microphone",
+      "Icon": "images/micAction",
+      "SupportedInMultiActions": false,
+      "DisableAutomaticStates": true,
+      "Controllers": ["Keypad"],
+      "States": [
+        { "Image": "images/micOn",  "ShowTitle": false },
+        { "Image": "images/micOff", "ShowTitle": false }
+      ]
+    },
+    {
+      "UUID": "com.local.audiocontrols.volume",
+      "Name": "Device Volume",
+      "Tooltip": "Turn to change the volume of the selected output device, press to mute",
+      "Icon": "images/volumeAction",
+      "PropertyInspectorPath": "inspectors/volume.html",
+      "SupportedInMultiActions": false,
+      "DisableAutomaticStates": true,
+      "Controllers": ["Knob"],
+      "States": [
+        { "Image": "images/speakerOn",  "ShowTitle": true },
+        { "Image": "images/speakerOff", "ShowTitle": true }
+      ]
+    },
+    {
+      "UUID": "com.local.audiocontrols.outputswitch",
+      "Name": "Switch Output Device",
+      "Tooltip": "Press to switch the Windows default output device to the next one in your list",
+      "Icon": "images/switchAction",
+      "PropertyInspectorPath": "inspectors/outputswitch.html",
+      "SupportedInMultiActions": false,
+      "DisableAutomaticStates": true,
+      "Controllers": ["Keypad"],
+      "States": [
+        { "Image": "images/outputSwitch", "ShowTitle": false }
+      ]
+    },
+    {
+      "UUID": "com.local.audiocontrols.camera",
+      "Name": "Toggle Camera",
+      "Tooltip": "Block / allow the camera for all apps (Windows camera privacy setting)",
+      "Icon": "images/cameraAction",
+      "SupportedInMultiActions": false,
+      "DisableAutomaticStates": true,
+      "Controllers": ["Keypad"],
+      "States": [
+        { "Image": "images/cameraOn",  "ShowTitle": false },
+        { "Image": "images/cameraOff", "ShowTitle": false }
+      ]
+    }
+  ]
+}
