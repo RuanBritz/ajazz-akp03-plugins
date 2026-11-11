@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -32,6 +33,25 @@ namespace VideoControls
         // The real camera to go back to. Saved in the key's settings so it survives restarts.
         readonly object rememberedLock = new object();
         RealCamera remembered;
+
+        // Camera effects the key turned off when going blank, to turn back on when going live:
+        // each is {"effectId": id, "params": {...}}. Saved in the key's settings with the camera.
+        // Guarded by rememberedLock.
+        List<Dictionary<string, object>> savedEffects = new List<Dictionary<string, object>>();
+        bool settingsLoaded;
+
+        // Image to show while blank (via background replace); null = plain black. blankImageApplied means the
+        // key turned background replace on for it, so going live must turn it off again.
+        const string BackgroundReplace = "background_replace";
+        string blankImage;
+        bool blankImageApplied;
+
+        // Param names set_effects accepts when enabling; anything else in the state is left out.
+        static readonly string[] EffectParams =
+        {
+            "warmth", "strength", "mode", "imagePath", "faceTracking", "outputWidth", "outputHeight",
+            "multiplier", "model", "zoom", "micProfile"
+        };
 
         class CameraInfo
         {
@@ -85,7 +105,112 @@ namespace VideoControls
                 case "keyDown":
                     await Toggle(context);
                     break;
+
+                case "propertyInspectorDidAppear":
+                    await SendImageToInspector(context, null);
+                    break;
+
+                case "sendToPlugin":
+                    // The plugin owns the settings: the inspector only asks for changes.
+                    if (payload == null) return;
+                    if (payload.ContainsKey("browse"))
+                    {
+                        // Not awaited: the dialog stays open while Stream Dock keeps sending events.
+                        var ignored = BrowseForImage(context);
+                    }
+                    else if (payload.ContainsKey("blankImage"))
+                    {
+                        await SetBlankImage(context, Broadcast.GetString(payload, "blankImage"));
+                    }
+                    break;
             }
+        }
+
+        // --- Blank image (shown through Broadcast's background replace while blank) ---
+
+        /// <summary>The image to show while blank, or null for black (none set, or the file is gone).</summary>
+        string BlankImage()
+        {
+            string path;
+            lock (rememberedLock) path = blankImage;
+            if (string.IsNullOrEmpty(path)) return null;
+            if (File.Exists(path)) return path;
+            StreamDock.Log("Blank image not found, using black: " + path);
+            return null;
+        }
+
+        async Task BrowseForImage(string context)
+        {
+            string current;
+            lock (rememberedLock) current = blankImage;
+            string picked = await FileDialog.PickImage(current);
+            if (picked != null) await SetBlankImage(context, picked);
+        }
+
+        async Task SetBlankImage(string context, string path)
+        {
+            path = (path ?? "").Trim().Trim('"');
+            string error = null;
+            if (path.Length > 0)
+            {
+                if (!Path.IsPathRooted(path)) error = "Use a full path, like C:\\Pictures\\brb.png.";
+                else if (path.Length > 259) error = "Broadcast can't use paths longer than 259 characters.";
+                else if (!File.Exists(path)) error = "File not found.";
+            }
+            if (error != null)
+            {
+                await SendImageToInspector(context, error);
+                return;
+            }
+
+            lock (rememberedLock) blankImage = path.Length > 0 ? path : null;
+            SaveRemembered();
+            await SendImageToInspector(context, null);
+
+            // Already blank: show the new image (or go back to black) straight away.
+            if (lastState == StateBlank && Interlocked.CompareExchange(ref switching, 1, 0) == 0)
+            {
+                try { await Task.Run(() => ApplyBlankImageNow()); }
+                catch (Exception ex) { StreamDock.Log("Changing the blank image failed: " + ex.Message); }
+                finally { Interlocked.Exchange(ref switching, 0); }
+            }
+        }
+
+        void ApplyBlankImageNow()
+        {
+            string image = BlankImage();
+            bool applied;
+            lock (rememberedLock) applied = blankImageApplied;
+            Dictionary<string, object> change;
+            if (image != null)
+            {
+                lock (rememberedLock) blankImageApplied = true;
+                SaveRemembered();
+                change = EnableChange(BackgroundReplace, new Dictionary<string, object> { { "imagePath", image } });
+            }
+            else if (applied)
+            {
+                change = new Dictionary<string, object> { { "effectId", BackgroundReplace }, { "enabled", false } };
+            }
+            else return;
+
+            LogEffectProblems(Broadcast.Call("set_effects", new Dictionary<string, object>
+                { { "effects", new List<Dictionary<string, object>> { change } } }, SwitchTimeoutMs), "changing the blank image");
+            if (image == null)
+            {
+                lock (rememberedLock) blankImageApplied = false;
+                SaveRemembered();
+            }
+        }
+
+        Task SendImageToInspector(string context, string error)
+        {
+            string path;
+            lock (rememberedLock) path = blankImage;
+            var payload = new Dictionary<string, object> { { "blankImage", path ?? "" } };
+            if (error != null) payload["error"] = error;
+            else if (path != null && !File.Exists(path)) payload["error"] = "File not found; the blank feed will be black.";
+            return StreamDock.SendToInspector(Uuid, context, payload);
         }
 
         public override Task Poll()
@@ -126,6 +251,14 @@ namespace VideoControls
             int state = active.IsBlank ? StateBlank : StateLive;
             if (!active.IsBlank) Remember(active);
             if (state != lastState) await ApplyState(state);
+
+            // Switched back to the real camera in Broadcast's own window: bring the effects back too.
+            if (!active.IsBlank && HasPendingRestore() && Interlocked.CompareExchange(ref switching, 1, 0) == 0)
+            {
+                try { await Task.Run(() => RestoreEffects()); }
+                catch (Exception ex) { StreamDock.Log("Restoring camera effects failed: " + ex.Message); }
+                finally { Interlocked.Exchange(ref switching, 0); }
+            }
         }
 
         async Task Toggle(string context)
@@ -179,10 +312,21 @@ namespace VideoControls
                 // Live -> blank. Keep the resolution if Blank Camera offers it, so Broadcast doesn't rescale.
                 if (active != null) Remember(active);
                 ShowPending(StateBlank);
+
+                // Note which effects are on (and save them) before touching anything.
+                List<Dictionary<string, object>> enabled = null;
+                try { enabled = ReadEnabledEffects(); }
+                catch (Exception ex) { StreamDock.Log("Reading camera effects failed; leaving them on: " + ex.Message); }
+                if (enabled != null && enabled.Count > 0) AddSavedEffects(enabled);
+
                 var args = SwitchArgs(blank.Id);
                 if (active != null && blank.Supports(active.Width, active.Height, active.FrameRate))
                     AddResolution(args, active.Width, active.Height, active.FrameRate);
                 Confirm(Broadcast.Call("set_active_device", args, SwitchTimeoutMs), blank.Name);
+
+                // The feed is already blank; failing to set the effects isn't worth an alert.
+                try { SetBlankEffects(enabled ?? new List<Dictionary<string, object>>()); }
+                catch (Exception ex) { StreamDock.Log("Setting camera effects for blank failed: " + ex.Message); }
                 return StateBlank;
             }
 
@@ -204,7 +348,127 @@ namespace VideoControls
             if (saved != null && target.Supports(saved.Width, saved.Height, saved.FrameRate))
                 AddResolution(liveArgs, saved.Width, saved.Height, saved.FrameRate);
             Confirm(Broadcast.Call("set_active_device", liveArgs, SwitchTimeoutMs), target.Name);
+
+            // The camera is back; an effect that won't come back is logged rather than alerted.
+            try { RestoreEffects(); }
+            catch (Exception ex) { StreamDock.Log("Restoring camera effects failed: " + ex.Message); }
             return StateLive;
+        }
+
+        // --- Camera effects (off while blank) ---
+
+        /// <summary>Camera effects that are on now, each as {"effectId", "params"}.</summary>
+        static List<Dictionary<string, object>> ReadEnabledEffects()
+        {
+            var state = Broadcast.Call("get_broadcast_state",
+                new Dictionary<string, object> { { "effectType", "camera" } }, ReadTimeoutMs);
+            var camera = StreamDock.GetDict(state, "camera") ?? state; // flat when filtered to camera
+            var enabled = new List<Dictionary<string, object>>();
+            foreach (var entry in camera)
+            {
+                var effect = entry.Value as Dictionary<string, object>;
+                if (effect == null || !Broadcast.GetBool(effect, "enabled", false)) continue;
+                var parameters = new Dictionary<string, object>();
+                foreach (string name in EffectParams)
+                {
+                    object v;
+                    if (effect.TryGetValue(name, out v) && v != null) parameters[name] = v;
+                }
+                enabled.Add(new Dictionary<string, object> { { "effectId", entry.Key }, { "params", parameters } });
+            }
+            return enabled;
+        }
+
+        static Dictionary<string, object> EnableChange(object effectId, Dictionary<string, object> parameters)
+        {
+            var change = new Dictionary<string, object> { { "effectId", effectId }, { "enabled", true } };
+            if (parameters != null && parameters.Count > 0) change["params"] = parameters;
+            return change;
+        }
+
+        /// <summary>
+        /// Turns off every camera effect that's on, then, if a blank image is set, turns background replace on
+        /// with it. Disables come first in the batch so blur / remove don't block background replace.
+        /// </summary>
+        void SetBlankEffects(List<Dictionary<string, object>> enabled)
+        {
+            string image = BlankImage();
+            var changes = new List<Dictionary<string, object>>();
+            foreach (var e in enabled)
+            {
+                if (image != null && (string)e["effectId"] == BackgroundReplace) continue; // re-set below
+                changes.Add(new Dictionary<string, object> { { "effectId", e["effectId"] }, { "enabled", false } });
+            }
+            if (image != null)
+            {
+                // Saved before the call, so a crash mid-way still turns it off on the way back.
+                lock (rememberedLock) blankImageApplied = true;
+                SaveRemembered();
+                changes.Add(EnableChange(BackgroundReplace, new Dictionary<string, object> { { "imagePath", image } }));
+            }
+            if (changes.Count == 0) return;
+            LogEffectProblems(Broadcast.Call("set_effects",
+                new Dictionary<string, object> { { "effects", changes } }, SwitchTimeoutMs), "setting for blank");
+        }
+
+        /// <summary>
+        /// Undoes SetBlankEffects: turns off the blank image's background replace (unless it was on before),
+        /// turns the saved effects back on with their old params, then forgets them.
+        /// </summary>
+        void RestoreEffects()
+        {
+            List<Dictionary<string, object>> effects;
+            bool applied;
+            lock (rememberedLock)
+            {
+                if (savedEffects.Count == 0 && !blankImageApplied) return;
+                effects = new List<Dictionary<string, object>>(savedEffects);
+                applied = blankImageApplied;
+            }
+            var changes = new List<Dictionary<string, object>>();
+            if (applied && !effects.Exists(e => (string)e["effectId"] == BackgroundReplace))
+                changes.Add(new Dictionary<string, object> { { "effectId", BackgroundReplace }, { "enabled", false } });
+            foreach (var e in effects)
+                changes.Add(EnableChange(e["effectId"], e["params"] as Dictionary<string, object>));
+
+            var result = Broadcast.Call("set_effects",
+                new Dictionary<string, object> { { "effects", changes } }, SwitchTimeoutMs);
+
+            // Forget them even if some failed, so a broken effect doesn't get retried every poll.
+            lock (rememberedLock)
+            {
+                savedEffects.Clear();
+                blankImageApplied = false;
+            }
+            SaveRemembered();
+            LogEffectProblems(result, "turning back on");
+        }
+
+        static void LogEffectProblems(Dictionary<string, object> result, string what)
+        {
+            if (Broadcast.GetBool(result, "success", false)) return;
+            object failed, skipped;
+            result.TryGetValue("failed", out failed);
+            result.TryGetValue("skipped", out skipped);
+            StreamDock.Log("Some camera effects failed " + what + ": failed=" + StreamDock.Json.Serialize(failed) +
+                " skipped=" + StreamDock.Json.Serialize(skipped));
+        }
+
+        /// <summary>Adds to the saved list, keeping any not yet restored (their old params win).</summary>
+        void AddSavedEffects(List<Dictionary<string, object>> effects)
+        {
+            lock (rememberedLock)
+            {
+                foreach (var e in effects)
+                    if (!savedEffects.Exists(s => (string)s["effectId"] == (string)e["effectId"]))
+                        savedEffects.Add(e);
+            }
+            SaveRemembered();
+        }
+
+        bool HasPendingRestore()
+        {
+            lock (rememberedLock) return savedEffects.Count > 0 || blankImageApplied;
         }
 
         static Dictionary<string, object> SwitchArgs(string deviceId)
@@ -285,11 +549,28 @@ namespace VideoControls
 
         void RestoreRemembered(Dictionary<string, object> settings)
         {
-            string id = Broadcast.GetString(settings, "cameraId");
-            if (id == null) return;
             lock (rememberedLock)
             {
-                if (remembered != null) return; // already know it from this session
+                if (settingsLoaded || settings == null) return; // already know it from this session
+                settingsLoaded = true;
+
+                foreach (var e in Broadcast.GetList(settings, "savedEffects"))
+                {
+                    string effectId = Broadcast.GetString(e, "effectId");
+                    if (effectId == null || savedEffects.Exists(s => (string)s["effectId"] == effectId)) continue;
+                    savedEffects.Add(new Dictionary<string, object>
+                    {
+                        { "effectId", effectId },
+                        { "params", StreamDock.GetDict(e, "params") ?? new Dictionary<string, object>() }
+                    });
+                }
+
+                string image = Broadcast.GetString(settings, "blankImage");
+                if (!string.IsNullOrEmpty(image)) blankImage = image;
+                blankImageApplied = Broadcast.GetBool(settings, "blankImageApplied", false);
+
+                string id = Broadcast.GetString(settings, "cameraId");
+                if (id == null || remembered != null) return;
                 remembered = new RealCamera
                 {
                     Id = id,
@@ -306,15 +587,20 @@ namespace VideoControls
             Dictionary<string, object> settings;
             lock (rememberedLock)
             {
-                if (remembered == null) return;
                 settings = new Dictionary<string, object>
                 {
-                    { "cameraId", remembered.Id },
-                    { "cameraName", remembered.Name },
-                    { "width", remembered.Width },
-                    { "height", remembered.Height },
-                    { "frameRate", remembered.FrameRate }
+                    { "savedEffects", new List<Dictionary<string, object>>(savedEffects) },
+                    { "blankImage", blankImage ?? "" },
+                    { "blankImageApplied", blankImageApplied }
                 };
+                if (remembered != null)
+                {
+                    settings["cameraId"] = remembered.Id;
+                    settings["cameraName"] = remembered.Name;
+                    settings["width"] = remembered.Width;
+                    settings["height"] = remembered.Height;
+                    settings["frameRate"] = remembered.FrameRate;
+                }
             }
             List<string> targets;
             lock (contextsLock) targets = new List<string>(contexts);

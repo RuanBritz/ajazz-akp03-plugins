@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Toggle Camera</title>
+  <style>
+    body { margin: 0; padding: 8px 12px; background: #2d2d2d; color: #d8d8d8;
+           font: 12px "Segoe UI", sans-serif; }
+    .row { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+    .row > label { width: 80px; flex-shrink: 0; color: #9a9a9a; }
+    input[type=text] { flex: 1; min-width: 0; height: 24px; box-sizing: border-box; padding: 0 6px;
+                       background: #3d3d3d; color: #d8d8d8; border: 1px solid #4a4a4a; border-radius: 3px;
+                       font: inherit; }
+    button { height: 26px; background: #3d3d3d; color: #d8d8d8; cursor: pointer;
+             border: 1px solid #4a4a4a; border-radius: 3px; font: inherit; padding: 0 10px; }
+    button:hover { background: #474747; }
+    .error { margin: 4px 0 0 86px; color: #e08a6a; min-height: 1em; }
+    .hint { margin: 10px 0 0 86px; color: #8a8a8a; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <label for="path">Blank image</label>
+    <input type="text" id="path" placeholder="None: plain black" spellcheck="false" />
+  </div>
+  <div class="row">
+    <label></label>
+    <button id="browse">Browse…</button>
+    <button id="clear">Clear</button>
+  </div>
+  <div class="error" id="error"></div>
+  <div class="hint">
+    While blank, NVIDIA Broadcast shows this image using its Background Replace effect. Images and videos
+    both work. Leave it empty for plain black. Other camera effects are turned off while blank and come
+    back when you go live.
+  </div>
+
+  <script>
+    let ws, piUuid, action;
+    const path = document.getElementById('path');
+    const error = document.getElementById('error');
+
+    // Called by Stream Dock when the property inspector opens.
+    function connectElgatoStreamDeckSocket(port, uuid, registerEvent, appInfo, actionInfo) {
+      piUuid = uuid;
+      const info = JSON.parse(actionInfo);
+      action = info.action;
+      const settings = (info.payload && info.payload.settings) || {};
+      path.value = settings.blankImage || '';
+
+      ws = new WebSocket('ws://127.0.0.1:' + port);
+      ws.onopen = () => ws.send(JSON.stringify({ event: registerEvent, uuid }));
+      ws.onmessage = e => {
+        const msg = JSON.parse(e.data);
+        // The plugin owns the settings and reports the saved path (and any problem) back here.
+        if (msg.event === 'sendToPropertyInspector' && msg.payload && 'blankImage' in msg.payload) {
+          if (document.activeElement !== path || !msg.payload.error) path.value = msg.payload.blankImage;
+          error.textContent = msg.payload.error || '';
+        }
+      };
+    }
+
+    function sendToPlugin(payload) {
+      ws.send(JSON.stringify({ event: 'sendToPlugin', action, context: piUuid, payload }));
+    }
+
+    path.addEventListener('change', () => sendToPlugin({ blankImage: path.value }));
+    document.getElementById('browse').addEventListener('click', () => sendToPlugin({ browse: true }));
+    document.getElementById('clear').addEventListener('click', () => {
+      path.value = '';
+      sendToPlugin({ blankImage: '' });
+    });
+  </script>
+</body>
+</html>

@@ -12,7 +12,7 @@ if not exist "%CSC%" (
 set "OUT=%~dp0com.local.videocontrols.sdPlugin\bin"
 if not exist "%OUT%" mkdir "%OUT%"
 
-"%CSC%" /nologo /target:winexe /optimize+ /out:"%OUT%\VideoControls.exe" /r:System.Web.Extensions.dll "%~dp0src\*.cs"
+"%CSC%" /nologo /target:winexe /optimize+ /out:"%OUT%\VideoControls.exe" /r:System.Web.Extensions.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll "%~dp0src\*.cs"
 if errorlevel 1 (
   echo Build failed.
   exit /b 1

@@ -22,6 +22,7 @@
       "Name": "Toggle Camera",
       "Tooltip": "Blank / restore your video by switching NVIDIA Broadcast to the Blank Camera",
       "Icon": "images/cameraAction",
+      "PropertyInspectorPath": "inspectors/camera.html",
       "SupportedInMultiActions": false,
       "DisableAutomaticStates": true,
       "Controllers": ["Keypad"],

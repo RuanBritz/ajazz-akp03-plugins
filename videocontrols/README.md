@@ -47,7 +47,14 @@ Reinstalling Audio Controls doesn't delete the old camera files from its install
 - Talks to Broadcast's local control server (`http://127.0.0.1:<port>/gateway`, port from
   `%APPDATA%\nvidia-broadcast\gateway.json`). No admin rights per press. The plugin checks that the server
   really is NVIDIA Broadcast before sending anything.
-- With background replace on, a blank feed may show your background image rather than pure black.
+- Going blank also turns off every camera effect that's on (background replace / blur, auto frame, eye
+  contact, ...), so the feed is pure black. They're saved in the key's settings with their options and turned
+  back on when you go live, including when you switch back to the real camera in Broadcast's own window.
+  Microphone and speaker effects aren't touched.
+- **Blank image (optional):** in the key's settings, click **Browse…** (or paste a full path) to pick an image
+  or video. While blank, Broadcast shows it using Background Replace over the black feed; going live turns
+  Background Replace back off (or back to your own background, if it was on). **Clear** goes back to black.
+  Changing it while blank takes effect straight away. If the file goes missing, the feed is plain black.
 
 ## How it works
 - Stream Dock starts `bin\VideoControls.exe`, which connects to Stream Dock over a local WebSocket and routes
@@ -55,7 +62,9 @@ Reinstalling Audio Controls doesn't delete the old camera files from its install
 - Source, in `src/`:
   - `Program.cs` – WebSocket loop, event routing, shared send / log helpers.
   - `CameraAction.cs` – the Toggle Camera key.
-  - `Broadcast.cs` – minimal MCP client for NVIDIA Broadcast's gateway (`list_devices`, `set_active_device`).
+  - `FileDialog.cs` – the native file picker behind the inspector's Browse button.
+  - `Broadcast.cs` – minimal MCP client for NVIDIA Broadcast's gateway (`list_devices`, `set_active_device`,
+    `get_broadcast_state`, `set_effects`).
 - `blankcam/` – the Blank Camera, C++: a Media Foundation media source that outputs black NV12 / RGB32 frames
   at 1080p30 and 720p30 (`MediaSource.cpp`, `Dll.cpp`), and `BlankCamSetup.cpp`, which registers it with
   `MFCreateVirtualCamera`. Design notes: [`docs/blank-camera-plan.md`](docs/blank-camera-plan.md).
